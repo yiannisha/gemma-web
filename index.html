@@ -1,0 +1,664 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gemma 3 (270M) — Local AI Chat</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      --bg: #0f1419;
+      --bg-secondary: #1a1f2e;
+      --fg: #e4e7eb;
+      --fg-secondary: #9ca3af;
+      --muted: #6b7280;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --error: #ef4444;
+      --card: #1f2937;
+      --card-hover: #374151;
+      --border: #374151;
+      --chip: #374151;
+      --chip-local: #065f46;
+      --radius: 12px;
+      --radius-lg: 16px;
+      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    }
+    
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f8fafc;
+        --bg-secondary: #f1f5f9;
+        --fg: #1e293b;
+        --fg-secondary: #475569;
+        --muted: #64748b;
+        --card: #ffffff;
+        --card-hover: #f8fafc;
+        --border: #e2e8f0;
+        --chip: #f1f5f9;
+        --chip-local: #dcfce7;
+      }
+    }
+    
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 0;
+      line-height: 1.6;
+    }
+    header, footer {
+      padding: 16px 20px;
+      background: var(--card);
+      border-color: var(--border);
+      backdrop-filter: blur(10px);
+      box-shadow: var(--shadow);
+    }
+    
+    header {
+      position: sticky; 
+      top: 0; 
+      z-index: 10; 
+      border-bottom: 1px solid var(--border);
+      display: flex; 
+      align-items: center; 
+      justify-content: space-between; 
+      flex-wrap: wrap; 
+      gap: 12px;
+      min-height: 72px;
+    }
+    
+    header h1 { 
+      font-size: clamp(18px, 3vw, 24px); 
+      margin: 0; 
+      font-weight: 700; 
+      background: var(--bg-gradient);
+      background-clip: text;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .local-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--chip-local);
+      color: var(--success);
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .local-indicator::before {
+      content: "🟢";
+      font-size: 8px;
+    }
+    
+    header .badges { 
+      display: flex; 
+      gap: 8px; 
+      align-items: center; 
+      flex-wrap: wrap;
+    }
+    
+    .chip { 
+      background: var(--chip); 
+      padding: 6px 12px; 
+      border-radius: var(--radius); 
+      font-size: 12px; 
+      color: var(--fg-secondary); 
+      border: 1px solid var(--border);
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+    
+    .chip:hover {
+      background: var(--card-hover);
+      transform: translateY(-1px);
+    }
+    
+    .chip.status-generating {
+      background: var(--warning);
+      color: white;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    main { 
+      padding: 20px; 
+      overflow: hidden;
+    }
+    
+    #chat {
+      max-width: 1000px; 
+      margin: 0 auto; 
+      padding: 24px; 
+      background: var(--card); 
+      border-radius: var(--radius-lg); 
+      min-height: 60vh;
+      max-height: 70vh;
+      display: flex; 
+      flex-direction: column; 
+      gap: 16px; 
+      overflow-y: auto; 
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-lg);
+      backdrop-filter: blur(10px);
+    }
+    
+    /* Custom scrollbar */
+    #chat::-webkit-scrollbar {
+      width: 6px;
+    }
+    
+    #chat::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    
+    #chat::-webkit-scrollbar-thumb {
+      background: var(--muted);
+      border-radius: 3px;
+    }
+    
+    #chat::-webkit-scrollbar-thumb:hover {
+      background: var(--fg-secondary);
+    }
+    
+    .msg { 
+      display: grid; 
+      grid-template-columns: auto 1fr; 
+      gap: 12px; 
+      align-items: start; 
+      padding: 16px; 
+      border-radius: var(--radius); 
+      transition: all 0.2s ease;
+      position: relative;
+    }
+    
+    .msg:hover {
+      background: var(--bg-secondary);
+    }
+    
+    .role { 
+      width: 40px; 
+      height: 40px; 
+      border-radius: 50%; 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      background: var(--accent); 
+      color: white; 
+      font-weight: 700; 
+      font-size: 14px;
+      flex-shrink: 0;
+      box-shadow: var(--shadow);
+    }
+    
+    .user .role {
+      background: var(--success);
+    }
+    
+    .system .role {
+      background: var(--muted);
+    }
+    
+    .bubble { 
+      background: var(--bg-secondary); 
+      border: 1px solid var(--border); 
+      padding: 16px 20px; 
+      border-radius: var(--radius); 
+      white-space: pre-wrap; 
+      line-height: 1.6;
+      font-size: 14px;
+      box-shadow: var(--shadow);
+      min-width: 0; /* Prevent overflow */
+      word-wrap: break-word;
+    }
+    
+    .user .bubble { 
+      background: var(--accent); 
+      color: white;
+      border-color: var(--accent);
+    }
+    
+    .assistant .bubble { 
+      background: var(--card);
+      border-color: var(--border);
+    }
+    
+    .system .bubble {
+      background: var(--bg-secondary);
+      color: var(--fg-secondary);
+      font-style: italic;
+    }
+
+    footer { 
+      border-top: 1px solid var(--border); 
+      border-bottom: none; 
+      background: var(--card);
+      padding: 20px;
+    }
+    
+    form {
+      max-width: 1000px; 
+      margin: 0 auto; 
+      display: grid; 
+      grid-template-columns: 1fr auto; 
+      gap: 12px;
+      align-items: end;
+    }
+    
+    textarea {
+      resize: vertical; 
+      min-height: 52px; 
+      max-height: 200px; 
+      border-radius: var(--radius); 
+      padding: 16px; 
+      outline: none; 
+      border: 2px solid var(--border); 
+      background: var(--bg-secondary); 
+      color: var(--fg); 
+      font-size: 15px;
+      font-family: inherit;
+      transition: all 0.2s ease;
+      line-height: 1.5;
+    }
+    
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgb(59 130 246 / 0.1);
+    }
+    
+    button {
+      appearance: none; 
+      border: 0; 
+      border-radius: var(--radius); 
+      padding: 16px 24px; 
+      background: var(--accent); 
+      color: white; 
+      font-weight: 600; 
+      cursor: pointer; 
+      transition: all 0.2s ease;
+      font-size: 14px;
+      height: 52px;
+      min-width: 80px;
+      box-shadow: var(--shadow);
+    }
+    
+    button:hover:not(:disabled) { 
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-lg);
+    }
+    
+    button:active:not(:disabled) { 
+      transform: translateY(0);
+    }
+    
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .small { 
+      font-size: 13px; 
+      color: var(--fg-secondary); 
+      line-height: 1.5;
+    }
+    
+    .loading { 
+      opacity: 0.8; 
+    }
+    
+    .hidden { 
+      display: none; 
+    }
+    
+    .mono { 
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; 
+      font-size: 11px; 
+    }
+    
+    .footer-info {
+      max-width: 1000px;
+      margin: 12px auto 0;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    
+    .footer-actions {
+      display: flex; 
+      gap: 8px; 
+      align-items: center;
+    }
+    
+    #clear {
+      background: var(--muted);
+      padding: 8px 16px;
+      font-size: 12px;
+      height: auto;
+      min-width: auto;
+    }
+    
+    #clear:hover:not(:disabled) {
+      background: var(--fg-secondary);
+    }
+    
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      header {
+        padding: 12px 16px;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+      
+      header h1 {
+        text-align: center;
+        font-size: 20px;
+      }
+      
+      header .badges {
+        justify-content: center;
+        gap: 6px;
+      }
+      
+      .chip {
+        font-size: 11px;
+        padding: 4px 8px;
+      }
+      
+      main {
+        padding: 12px;
+      }
+      
+      #chat {
+        padding: 16px;
+        min-height: 50vh;
+        max-height: 60vh;
+      }
+      
+      .msg {
+        padding: 12px;
+        gap: 10px;
+      }
+      
+      .role {
+        width: 36px;
+        height: 36px;
+        font-size: 12px;
+      }
+      
+      .bubble {
+        padding: 12px 16px;
+        font-size: 14px;
+      }
+      
+      footer {
+        padding: 16px;
+      }
+      
+      form {
+        gap: 8px;
+      }
+      
+      textarea, button {
+        height: 48px;
+        min-height: 48px;
+        font-size: 14px;
+      }
+      
+      .footer-info {
+        flex-direction: column;
+        gap: 12px;
+        text-align: center;
+      }
+    }
+    
+    @media (max-width: 480px) {
+      header h1 {
+        font-size: 18px;
+      }
+      
+      form {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      
+      button {
+        width: 100%;
+      }
+      
+      .footer-info {
+        gap: 8px;
+      }
+      
+      .chip {
+        font-size: 10px;
+        padding: 3px 6px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>
+      Gemma 3 (270M) — Local AI Chat
+      <span class="local-indicator">Running Locally</span>
+    </h1>
+    <div class="badges">
+      <span id="backend-chip" class="chip">backend: …</span>
+      <span id="status-chip" class="chip">status: idle</span>
+      <a class="chip mono" href="https://huggingface.co/onnx-community/gemma-3-270m-it-ONNX" target="_blank" rel="noreferrer">model: onnx-community/gemma-3-270m-it-ONNX</a>
+    </div>
+  </header>
+
+  <main>
+    <div id="chat" aria-live="polite" aria-busy="false"></div>
+  </main>
+
+  <footer>
+    <form id="composer">
+      <textarea id="prompt" placeholder="Ask me anything… (Shift+Enter for new line)" required></textarea>
+      <button id="send" type="submit">Send</button>
+    </form>
+    <div class="footer-info small">
+      <span>🏠 <strong>100% Local AI</strong> - Runs entirely in your browser using Transformers.js. No data leaves your device. First response downloads model files (cached afterwards).</span>
+      <div class="footer-actions">
+        <button id="clear" type="button" title="Clear chat">Clear Chat</button>
+      </div>
+    </div>
+  </footer>
+
+  <script type="module">
+    import { pipeline, TextStreamer } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2';
+
+    // --- Minimal chat UI helpers ------------------------------------------------
+    const chat = document.getElementById('chat');
+    const composer = document.getElementById('composer');
+    const promptEl = document.getElementById('prompt');
+    const sendBtn = document.getElementById('send');
+    const clearBtn = document.getElementById('clear');
+    const backendChip = document.getElementById('backend-chip');
+    const statusChip = document.getElementById('status-chip');
+
+    const state = {
+      msgs: [ { role: 'system', content: 'You are a concise, helpful assistant.' } ],
+      busy: false,
+      generator: null,
+      device: (navigator.gpu ? 'webgpu' : 'wasm'),
+      model: 'onnx-community/gemma-3-270m-it-ONNX',
+    };
+
+    backendChip.textContent = `backend: ${state.device}`;
+
+    function addMessage(role, text, streaming=false) {
+      const wrap = document.createElement('div');
+      wrap.className = `msg ${role}`;
+      const badge = document.createElement('div');
+      badge.className = 'role';
+      badge.textContent = role === 'user' ? 'U' : role === 'assistant' ? 'A' : 'S';
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+      bubble.textContent = text || '';
+      wrap.appendChild(badge); wrap.appendChild(bubble);
+      if (streaming) wrap.dataset.streaming = '1';
+      chat.appendChild(wrap);
+      chat.scrollTop = chat.scrollHeight;
+      return bubble;
+    }
+
+    function setBusy(on) {
+      state.busy = on;
+      composer.classList.toggle('loading', on);
+      promptEl.disabled = on; sendBtn.disabled = on;
+      chat.setAttribute('aria-busy', on ? 'true' : 'false');
+      statusChip.textContent = `status: ${on ? 'generating…' : 'idle'}`;
+      statusChip.classList.toggle('status-generating', on);
+    }
+
+    clearBtn.addEventListener('click', () => {
+      state.msgs = [ state.msgs[0] ];
+      chat.innerHTML = '';
+      addMessage('system', 'Chat cleared.');
+      promptEl.focus();
+    });
+
+    // Initialize the pipeline
+    async function ensurePipeline() {
+      if (state.generator) return state.generator;
+      
+      try {
+        state.generator = await pipeline(
+          'text-generation',
+          state.model,
+          { device: state.device }
+        );
+      } catch (error) {
+        console.error('Failed to load model:', error);
+        throw error;
+      }
+      
+      return state.generator;
+    }
+
+    // Load model immediately when page loads
+    async function initializeModel() {
+      const loadingMessage = addMessage('assistant', '🚀 Loading Gemma 3 (270M) model... This may take a moment on first load.');
+      setBusy(true);
+      statusChip.textContent = 'status: loading model...';
+      
+      try {
+        await ensurePipeline();
+        // Remove loading message and show ready message
+        chat.removeChild(loadingMessage.parentElement);
+        addMessage('assistant', `✅ Model loaded successfully! 
+
+👋 Hi! I'm Gemma 3 (270M) running completely locally in your browser. 
+
+🔒 **Privacy First**: Your conversations never leave your device
+🚀 **Zero Latency**: No internet required after initial model download
+💻 **Powered by**: Transformers.js + ${state.device.toUpperCase()}
+
+Ask me anything to get started!`);
+      } catch (error) {
+        // Update loading message to show error
+        loadingMessage.textContent = `❌ Failed to load model: ${error.message}. Please refresh the page to try again.`;
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function generate(prompt) {
+      const userBubble = addMessage('user', prompt);
+      const assistantBubble = addMessage('assistant', '');
+
+      // Ensure model is loaded (should already be loaded by now)
+      const generator = await ensurePipeline();
+      setBusy(true);
+
+      // Build messages (system + chat history + latest user)
+      const messages = state.msgs.concat({ role: 'user', content: prompt });
+
+      // Stream tokens into the assistant bubble
+      const streamer = new TextStreamer(generator.tokenizer, {
+        skip_prompt: true,
+        skip_special_tokens: true,
+        callback_function: (text) => {
+          assistantBubble.textContent += text;
+          chat.scrollTop = chat.scrollHeight;
+        }
+      });
+
+      try {
+        const out = await generator(messages, {
+          max_new_tokens: 256,
+          do_sample: false,
+          streamer,
+        });
+
+        // Record the assistant turn using the model's formatted output if available
+        const generated = out?.[0]?.generated_text;
+        let assistantText = '';
+        if (Array.isArray(generated)) {
+          // Chat template aware output (array of messages)
+          assistantText = generated.at(-1)?.content || assistantBubble.textContent;
+        } else if (typeof out?.[0]?.generated_text === 'string') {
+          assistantText = out[0].generated_text;
+        } else {
+          assistantText = assistantBubble.textContent;
+        }
+
+        // Update history
+        state.msgs.push({ role: 'user', content: prompt });
+        state.msgs.push({ role: 'assistant', content: assistantText });
+      } catch (err) {
+        console.error(err);
+        assistantBubble.textContent = '⚠️ Error: ' + (err?.message || err);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    composer.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = promptEl.value.trim();
+      if (!text || state.busy) return;
+      promptEl.value = '';
+      generate(text);
+    });
+
+    // UX niceties: Shift+Enter = new line, Enter = send
+    promptEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        composer.requestSubmit();
+      }
+    });
+
+    // Start loading the model immediately when the page loads
+    initializeModel();
+  </script>
+</body>
+</html>
